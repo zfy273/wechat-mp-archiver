@@ -99,7 +99,7 @@ public class AppSettings
     public string AccountName { get; set; } = "上海市张江集团中学";
     public string OutputRoot { get; set; } = DefaultOutputRoot();
     public string FakeId { get; set; } = "";
-    public int PageSize { get; set; } = 10;
+    public int PageSize { get; set; } = 5;
     public int DelayMinMs { get; set; } = 6000;
     public int DelayMaxMs { get; set; } = 11000;
     public bool DownloadImages { get; set; } = true;

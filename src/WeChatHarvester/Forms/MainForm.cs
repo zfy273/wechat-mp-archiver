@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.IO.Compression;
 using System.Text;
 using WeChatHarvester.Models;
@@ -80,7 +81,10 @@ public class MainForm : Form
         RefreshList();
         UpdateCounts();
 
+        _mp.Log = msg => AppendLog(msg, LogLevel.Warn);
+
         AppendLog("就绪。要抓单篇文章，用「链接导入」页；要抓整个目录，用「公众号目录」页先登录。", LogLevel.Info);
+        WarnIfProxy();
     }
 
     // =====================================================================
@@ -1192,17 +1196,6 @@ public class MainForm : Form
 
         if (_log.TextLength > 200000) _log.Clear();
 
-        // 同时落盘，方便出问题时把 logs\run.log 发给开发者
-        try
-        {
-            var dir = Path.Combine(AppContext.BaseDirectory, "logs");
-            Directory.CreateDirectory(dir);
-            File.AppendAllText(Path.Combine(dir, "run.log"),
-                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {text}{Environment.NewLine}",
-                Encoding.UTF8);
-        }
-        catch { }
-
         if (_lblStatus != null && level is LogLevel.Info or LogLevel.Ok)
             _lblStatus.Text = Cut(text, 80);
     }
@@ -1232,6 +1225,18 @@ public class MainForm : Form
         {
             _progress.Value = Math.Max(0, Math.Min(100, (int)pct));
             if (!string.IsNullOrEmpty(status)) _lblStatus.Text = status;
+        }
+        catch { }
+    }
+
+    /// <summary>系统代理会让微信后台接口立刻返回 200013，启动时提示一下。</summary>
+    private void WarnIfProxy()
+    {
+        try
+        {
+            if (HttpClient.DefaultProxy is WebProxy wp && wp.Address != null)
+                AppendLog($"检测到系统代理 {wp.Address}。微信后台接口经代理出口极易被判“操作过于频繁”，" +
+                          "程序已改为直连微信（只有直连不通时才回退代理）。", LogLevel.Warn);
         }
         catch { }
     }

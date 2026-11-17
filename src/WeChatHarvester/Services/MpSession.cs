@@ -38,18 +38,35 @@ public class MpSession : IDisposable
 
     public bool HasSession => !string.IsNullOrWhiteSpace(Token) && !string.IsNullOrWhiteSpace(CookieHeader);
 
+    /// <summary>日志回调（由界面挂上）。</summary>
+    public Action<string> Log { get; set; }
+
+    private readonly HttpClient _httpProxy;   // 走系统代理（兜底）
+    private bool _warmedUp;
+
     public MpSession()
+    {
+        // 关键：微信后台接口对出口 IP 极敏感，走代理几乎必被判 200013（freq control）。
+        // 所以默认直连，只有直连网络不通时才回退到系统代理。
+        _http = CreateClient(useProxy: false);
+        _httpProxy = CreateClient(useProxy: true);
+    }
+
+    private static HttpClient CreateClient(bool useProxy)
     {
         var handler = new HttpClientHandler
         {
             UseCookies = false,
-            AutomaticDecompression = DecompressionMethods.All
+            AllowAutoRedirect = true,
+            AutomaticDecompression = DecompressionMethods.All,
+            UseProxy = useProxy
         };
-        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
-        _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UA);
-        _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
-        _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "zh-CN,zh;q=0.9");
-        _http.DefaultRequestHeaders.TryAddWithoutValidation("X-Requested-With", "XMLHttpRequest");
+        var c = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UA);
+        c.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
+        c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "zh-CN,zh;q=0.9");
+        c.DefaultRequestHeaders.TryAddWithoutValidation("X-Requested-With", "XMLHttpRequest");
+        return c;
     }
 
     public void SetCookies(IEnumerable<KeyValuePair<string, string>> pairs)
@@ -69,13 +86,40 @@ public class MpSession : IDisposable
         return req;
     }
 
-    private async Task<string> GetAsync(string url, CancellationToken ct)
+    private async Task<string> SendAsync(HttpClient client, string url, CancellationToken ct)
     {
         using var req = Build(url);
-        using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseContentRead, ct);
+        using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseContentRead, ct);
         if (!resp.IsSuccessStatusCode)
             throw new MpException(MpError.Unknown, $"接口返回 HTTP {(int)resp.StatusCode}");
         return await resp.Content.ReadAsStringAsync(ct);
+    }
+
+    private async Task<string> GetAsync(string url, CancellationToken ct)
+    {
+        try
+        {
+            return await SendAsync(_http, url, ct);          // 直连优先
+        }
+        catch (HttpRequestException ex)
+        {
+            Log?.Invoke($"[网络] 直连失败（{ex.Message}），改用系统代理重试…");
+            return await SendAsync(_httpProxy, url, ct);     // 代理兜底
+        }
+    }
+
+    /// <summary>正式拉列表前先访问一次图文编辑页，把该模块的会话"预热"上。</summary>
+    private async Task WarmUpAsync(CancellationToken ct)
+    {
+        if (_warmedUp) return;
+        _warmedUp = true;
+        try
+        {
+            using var req = Build(AppMsgUrl);
+            using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            _ = resp.StatusCode;
+        }
+        catch { }
     }
 
     private static void ThrowIfNotJson(string text)
@@ -99,7 +143,7 @@ public class MpSession : IDisposable
         using var doc = JsonDocument.Parse(text);
         var root = doc.RootElement;
         var (ret, msg) = ReadResp(root);
-        if (ret == 200013) throw new MpException(MpError.FreqControl, "搜索过于频繁，被微信限流了。");
+        if (ret == 200013) throw new MpException(MpError.FreqControl, $"搜索过于频繁（ret=200013 {msg}）".Trim());
         if (ret == 200003) throw new MpException(MpError.LoginExpired, "登录态已失效，请重新扫码登录。");
         if (ret != 0) throw new MpException(MpError.Unknown, $"搜索失败 ret={ret} {msg}");
 
@@ -125,6 +169,7 @@ public class MpSession : IDisposable
     public async Task<CatalogPage> FetchPageAsync(string fakeId, int begin, int count, CancellationToken ct)
     {
         if (!HasSession) throw new MpException(MpError.LoginExpired, "尚未登录公众号后台。");
+        await WarmUpAsync(ct);
         var url = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=list_ex" +
                   "&begin=" + begin + "&count=" + count +
                   "&fakeid=" + Uri.EscapeDataString(fakeId) +
@@ -137,7 +182,7 @@ public class MpSession : IDisposable
         var root = doc.RootElement;
         var (ret, msg) = ReadResp(root);
 
-        if (ret == 200013) throw new MpException(MpError.FreqControl, "操作过于频繁，微信要求验证。");
+        if (ret == 200013) throw new MpException(MpError.FreqControl, $"操作过于频繁（ret=200013 {msg}）".Trim());
         if (ret == 200003) throw new MpException(MpError.LoginExpired, "登录态已失效，请重新扫码登录。");
         if (ret == 200002) throw new MpException(MpError.Unknown, "参数有误（fakeid 可能不对）。");
         if (ret != 0) throw new MpException(MpError.Unknown, $"接口返回 ret={ret} {msg}");
@@ -195,5 +240,9 @@ public class MpSession : IDisposable
         return 0;
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        _http.Dispose();
+        _httpProxy.Dispose();
+    }
 }

@@ -39,16 +39,40 @@ public class ArticleDownloader : IDisposable
     private readonly HttpClient _http;
     private readonly HtmlParser _parser = new();
 
+    private readonly HttpClient _httpProxy;
+
     public ArticleDownloader()
+    {
+        // 与 MpSession 相同：默认直连，直连不通才走系统代理
+        _http = CreateClient(useProxy: false);
+        _httpProxy = CreateClient(useProxy: true);
+    }
+
+    private static HttpClient CreateClient(bool useProxy)
     {
         var handler = new HttpClientHandler
         {
             UseCookies = false,
-            AutomaticDecompression = DecompressionMethods.All
+            AllowAutoRedirect = true,
+            AutomaticDecompression = DecompressionMethods.All,
+            UseProxy = useProxy
         };
-        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(40) };
-        _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", MpSession.UA);
-        _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "zh-CN,zh;q=0.9");
+        var c = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(40) };
+        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", MpSession.UA);
+        c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "zh-CN,zh;q=0.9");
+        return c;
+    }
+
+    /// <summary>先直连；直连抛网络异常时换系统代理重发（请求对象不可复用，所以传工厂）。</summary>
+    private async Task<HttpResponseMessage> SendAsync(Func<HttpRequestMessage> make, CancellationToken ct)
+    {
+        var req = make();
+        try { return await _http.SendAsync(req, ct); }
+        catch (HttpRequestException)
+        {
+            req.Dispose();
+            return await _httpProxy.SendAsync(make(), ct);
+        }
     }
 
     public async Task<DownloadResult> DownloadAsync(
@@ -258,9 +282,12 @@ public class ArticleDownloader : IDisposable
 
     private async Task<(string html, string finalUrl)> FetchTextAsync(string url, CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.TryAddWithoutValidation("Referer", "https://mp.weixin.qq.com/");
-        using var resp = await _http.SendAsync(req, ct);
+        using var resp = await SendAsync(() =>
+        {
+            var r = new HttpRequestMessage(HttpMethod.Get, url);
+            r.Headers.TryAddWithoutValidation("Referer", "https://mp.weixin.qq.com/");
+            return r;
+        }, ct);
         resp.EnsureSuccessStatusCode();
         var finalUrl = resp.RequestMessage?.RequestUri?.ToString() ?? url;
         return (await resp.Content.ReadAsStringAsync(ct), finalUrl);
@@ -303,9 +330,12 @@ public class ArticleDownloader : IDisposable
             if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return null;
             Directory.CreateDirectory(assetsDir);
 
-            using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.TryAddWithoutValidation("Referer", referer);
-            using var resp = await _http.SendAsync(req, ct);
+            using var resp = await SendAsync(() =>
+            {
+                var r = new HttpRequestMessage(HttpMethod.Get, url);
+                r.Headers.TryAddWithoutValidation("Referer", referer);
+                return r;
+            }, ct);
             if (!resp.IsSuccessStatusCode) return null;
 
             var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
@@ -403,5 +433,9 @@ public class ArticleDownloader : IDisposable
             .Replace("__CONTENT__", content);
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        _http.Dispose();
+        _httpProxy.Dispose();
+    }
 }
