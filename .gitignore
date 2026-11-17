@@ -1,0 +1,16 @@
+# 构建产物
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# 运行时生成（含本机路径与登录缓存，不要提交）
+settings.json
+logs/
+_webview2/
+_webview2_print/
+
+# 归档输出（抓下来的内容不要误提交）
+articles/
+index.json

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>张江公众号采集器</AssemblyName>
+    <RootNamespace>WeChatHarvester</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 图标是可选资源：仓库里不提交二进制，本地有 app.ico 时自动带上 -->
+    <ApplicationIcon Condition="Exists('app.ico')">app.ico</ApplicationIcon>
+    <Version>3.0.0</Version>
+    <Product>公众号文章采集器</Product>
+    <Company>Local</Company>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <NoWarn>$(NoWarn);CS8981;NETSDK1138;CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="AngleSharp" Version="1.1.2" />
+  </ItemGroup>
+
+</Project>
