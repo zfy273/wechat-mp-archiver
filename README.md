@@ -5,8 +5,29 @@
 
 > 起因：孩子学校公众号的文章想留个底，微信官方又没有导出功能，于是自己写了一个。
 
+## 下载即用
+
+到 [Releases](https://github.com/zfy273/wechat-mp-archiver/releases) 下载
+`WeChatMPArchiver-v3.0.0-win-x64.exe`，双击就能跑——**已内置 .NET 运行时，不用装任何环境**
+（约 65 MB，首次启动会自解压，慢一两秒属正常）。
+
+> 唯一的外部依赖是系统自带的 WebView2 运行时：Windows 11 和装了 Edge 的 Windows 10 都有。
+> 没有也能用「链接导入」抓单篇，只是「登录公众号后台」和「导出 PDF」两个功能不可用。
+
+## 界面
+
+主界面（WinForms 系统原生控件，没有自绘皮肤）：
+
+![主界面](docs/screenshot-main.png)
+
+登录窗（可选，用 WebView2 承载微信扫码页）：
+
+![登录窗](docs/screenshot-login.png)
+
 ## 目录
 
+- [下载即用](#下载即用)
+- [界面](#界面)
 - [功能](#功能)
 - [两种采集方式](#两种采集方式)
 - [为什么免登录拿不到文章列表](#为什么免登录拿不到文章列表)
@@ -66,9 +87,9 @@ flowchart LR
 
 ## 环境要求
 
-- Windows 10 / 11
-- [.NET 6 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/6.0)（或装 .NET 6 SDK 自行编译）
-- WebView2 Runtime（Windows 11 自带；Win10 一般随 Edge 安装）
+- **直接用 Release 版**：Windows 10 / 11 即可，运行时已打包进 exe，无需安装 .NET
+- **自行编译**：需要 [.NET 6 SDK](https://dotnet.microsoft.com/download/dotnet/6.0)
+- WebView2 Runtime（仅「登录」与「导出 PDF」需要；Win11 自带，Win10 一般随 Edge 安装）
 
 ## 构建与运行
 

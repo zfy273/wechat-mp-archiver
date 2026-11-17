@@ -1192,6 +1192,17 @@ public class MainForm : Form
 
         if (_log.TextLength > 200000) _log.Clear();
 
+        // 同时落盘，方便出问题时把 logs\run.log 发给开发者
+        try
+        {
+            var dir = Path.Combine(AppContext.BaseDirectory, "logs");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "run.log"),
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {text}{Environment.NewLine}",
+                Encoding.UTF8);
+        }
+        catch { }
+
         if (_lblStatus != null && level is LogLevel.Info or LogLevel.Ok)
             _lblStatus.Text = Cut(text, 80);
     }
